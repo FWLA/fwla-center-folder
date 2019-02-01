@@ -1,6 +1,8 @@
-from apscheduler.schedulers.blocking import BlockingScheduler
-import requests
 import logging
+
+import requests
+import smbus2
+from apscheduler.schedulers.blocking import BlockingScheduler
 
 
 class LedController:
@@ -21,14 +23,28 @@ class LoggingLedController(LedController):
 # Controller for I2C connected LEDs
 
 
-class I2CLedController(LedController):
+class I2CLedController(LoggingLedController):
+
+    def __init__(self):
+        self.bus = smbus2.SMBus()
+        self.bus.write_byte_data(0x20, 0x00, 0x00)
+        self.bus.write_byte_data(0x20, 0x01, 0x00)
+
     def reset(self):
-        # TODO Implement I2C reset
-        logging.info('Reset')
+        super(I2CLedController, self).reset()
+        self.bus.write_byte_data(0x20, 0x14, 0x00)
+        self.bus.write_byte_data(0x20, 0x15, 0x00)
 
     def set(self, id):
-        # TODO Implement I2C set
-        logging.info('set {}'.format(id))
+        super(I2CLedController, self).set(id)
+
+        register = 0x14
+        if id / 2 > 0:
+            register = 0x15
+
+        bitmask = id % 8
+
+        self.bus.write_byte_data(0x20, register, bitmask)
 
 # Controller for WS2812 connected LEDs
 

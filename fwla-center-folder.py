@@ -1,6 +1,9 @@
 import logging
 
+import random
 import requests
+import board
+import neopixel
 import smbus2
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -26,7 +29,7 @@ class LoggingLedController(LedController):
 class I2CLedController(LoggingLedController):
 
     def __init__(self):
-        self.bus = smbus2.SMBus()
+        self.bus = smbus2.SMBus(1)
         self.bus.write_byte_data(0x20, 0x00, 0x00)
         self.bus.write_byte_data(0x20, 0x01, 0x00)
 
@@ -39,7 +42,7 @@ class I2CLedController(LoggingLedController):
         super(I2CLedController, self).set(id)
 
         register = 0x14
-        if id / 2 > 0:
+        if id / 8 > 0:
             register = 0x15
 
         bitmask = id % 8
@@ -50,59 +53,81 @@ class I2CLedController(LoggingLedController):
 
 
 class WS2812LedController(LedController):
+
+    def __init__(self, color):
+        self._color = color
+        self._pixels = neopixel.NeoPixel(board.D18, 144, auto_write=False)
+        self._pixels.fill((0, 0, 0))
+        self._pixels.show()
+
     def reset(self):
-        # TODO Implement WS2812 reset
-        logging.info('Reset')
+        super(WS2812LedController, self).reset()
+
+        self._pixels.fill((0, 0, 0))
+        self._pixels.show()
 
     def set(self, id):
-        # TODO Implement WS2812 set
-        logging.info('set {}'.format(id))
+        super(WS2812LedController, self).set(id)
+
+        self._pixels.fill((0, 0, 0))
+        self._pixels[id] = self._color
+        self._pixels.show()
 
 
 # BASIC OPTIONS
 logging.basicConfig(level=logging.INFO)
 
-TEST_ENV = 'http://localhost:8080/v1/display'
-PROD_ENV = 'http://fwla-center.ffwlampertheim.local/api/v1/display'
+TEST_ENV = 'http://192.168.0.199:8080/v1/display'
+PROD_ENV = 'http://10.24.6.35/api/v1/display'
 
 url = TEST_ENV
 
-controller = LoggingLedController()
+color = (0, 0, 255)
+controller = WS2812LedController(color)
 
 
 def job():
+    address = get_active_address()
+    if address < 0:
+        controller.reset()
+    else:
+        controller.set(address)
+
+
+def get_mock_address():
+    return random.randint(-1, 100)
+
+
+def get_active_address():
     try:
-        r = requests.get(url)
+        r = requests.get(url, timeout=2)
         data = r.json()
         if (data['state'] != 'OPERATION'):
             logging.debug('Not operation state.')
-            controller.reset()
-            return
+            return -1
 
         if 'operation' not in data:
             logging.debug('No operation.')
-            controller.reset()
-            return
+            return -1
 
         operation = data['operation']
 
         if 'realEstate' not in operation:
             logging.debug('No realEstate.')
-            controller.reset()
-            return
+            return -1
 
         realEstate = operation['realEstate']
 
         if 'folderAddress' not in realEstate:
             logging.debug('No folderAddress.')
-            controller.reset()
-            return
+            return -1
 
         folderAddress = int(realEstate['folderAddress'])
-        controller.set(folderAddress)
-    except:
+        return folderAddress
+    except Exception as e:
         logging.warn('Exception when getting data.')
-        controller.reset()
+        logging.warn(e)
+        return -1
 
 
 def init():
@@ -112,6 +137,7 @@ def init():
     try:
         scheduler.start()
     except (KeyboardInterrupt):
+        controller.reset()
         logging.info('Stopping process.')
 
 

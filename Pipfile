@@ -10,8 +10,8 @@ autopep8 = "*"
 [packages]
 requests = "*"
 apscheduler = "*"
-smbus = "*"
 smbus2 = "*"
+tzlocal = "*"
 
 [requires]
-python_version = "3.7"
+python_version = "3.5"
